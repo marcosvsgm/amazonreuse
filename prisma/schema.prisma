@@ -1,0 +1,366 @@
+generator client {
+  provider        = "prisma-client-js"
+  engineType      = "client"
+  runtime         = "workerd"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  CONSULTANT
+  TECHNICAL_MANAGER
+  CLIENT_ADMIN
+  OPERATOR
+  PARTICIPANT
+  VIEWER
+}
+
+enum ContractStatus {
+  ACTIVE
+  PAUSED
+  FINISHED
+}
+
+enum ProjectContractType {
+  PROJECT
+  CONTRACT
+}
+
+enum WasteSource {
+  ESTIMATED
+  WEIGHED
+}
+
+enum WasteStatus {
+  PENDING
+  DESTINED
+  RECYCLED
+}
+
+model Tenant {
+  id                String             @id @default(cuid())
+  name              String
+  slug              String             @unique
+  createdAt         DateTime           @default(now())
+  units             Unit[]
+  users             User[]
+  contracts         Contract[]
+  wasteMeasurements WasteMeasurement[]
+  campaigns         Campaign[]
+  documents         Document[]
+  collections        Collection[]
+  inspections        Inspection[]
+  nonConformities    NonConformity[]
+  auditLogs         AuditLog[]
+  esgIndicators     EsgIndicator[]
+  reports           Report[]
+  invitations       UserInvitation[]
+}
+
+model Unit {
+  id           String             @id @default(cuid())
+  name         String
+  tenantId     String
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  measurements WasteMeasurement[]
+  collections   Collection[]
+  inspections   Inspection[]
+  campaigns     Campaign[]
+  esgIndicators EsgIndicator[]
+  reports       Report[]
+  users         User[]
+
+  @@unique([tenantId, name])
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role
+  tenantId     String?
+  tenant       Tenant?  @relation(fields: [tenantId], references: [id])
+  unitId       String?
+  unit         Unit?    @relation(fields: [unitId], references: [id])
+  status       String   @default("ACTIVE")
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId, role])
+}
+
+model UserInvitation {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unitId    String?
+  email     String
+  name      String
+  role      Role
+  tokenHash String   @unique
+  expiresAt DateTime
+  acceptedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([tenantId, email])
+}
+
+model RolePermission {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  role      Role
+  module    String
+  view      Boolean @default(false)
+  create    Boolean @default(false)
+  update    Boolean @default(false)
+  delete    Boolean @default(false)
+  export    Boolean @default(false)
+  updatedAt DateTime @updatedAt
+  @@unique([tenantId, role, module])
+}
+
+model Setting {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  userId    String?
+  scope     String
+  key       String
+  value     String
+  updatedAt DateTime @updatedAt
+  @@unique([tenantId, userId, scope, key])
+}
+
+model AccessProfile {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  name        String
+  description String   @default("")
+  permissions String   @default("{}")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@unique([tenantId, name])
+}
+
+model Contract {
+  id          String              @id @default(cuid())
+  tenantId    String
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  type        ProjectContractType @default(PROJECT)
+  responsible String
+  status      ContractStatus      @default(ACTIVE)
+  startsAt    DateTime
+  endsAt      DateTime?
+  modules     String              @default("[]")
+  documents   Document[]
+
+  @@index([tenantId, status])
+}
+
+model WasteMeasurement {
+  id          String      @id @default(cuid())
+  tenantId    String
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unitId      String
+  unit        Unit        @relation(fields: [unitId], references: [id])
+  wasteType   String
+  classification String
+  weightKg    Decimal
+  source      WasteSource
+  status      WasteStatus @default(PENDING)
+  measuredAt  DateTime
+  createdById String
+  createdAt   DateTime    @default(now())
+  documents   Document[]
+
+  @@index([tenantId, measuredAt])
+  @@index([unitId, measuredAt])
+}
+
+model Campaign {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unitId        String?
+  unit          Unit?    @relation(fields: [unitId], references: [id])
+  title         String
+  type          String   @default("CAMPAIGN")
+  theme         String   @default("OUTROS")
+  description   String   @default("")
+  objectives    String   @default("")
+  location      String   @default("")
+  responsible   String   @default("")
+  status        String   @default("PLANNED")
+  notes         String   @default("")
+  results       String   @default("")
+  startsAt      DateTime
+  attendees     Int      @default(0)
+  feedbackCount Int      @default(0)
+  attachments   CampaignAttachment[]
+
+  @@index([tenantId, startsAt])
+  @@index([unitId, status])
+}
+
+model CampaignAttachment {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  name       String
+  storageKey String
+  createdAt  DateTime @default(now())
+
+  @@index([campaignId])
+}
+
+model EsgIndicator {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unitId    String?
+  unit      Unit?    @relation(fields: [unitId], references: [id])
+  name      String
+  category  String
+  unitLabel String
+  value     Decimal
+  target    Decimal?
+  period    DateTime
+  responsible String
+  notes     String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, period])
+  @@index([unitId, category])
+}
+
+model Report {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unitId      String?
+  unit        Unit?    @relation(fields: [unitId], references: [id])
+  name        String
+  type        String
+  format      String
+  startsAt    DateTime
+  endsAt      DateTime
+  includeCharts Boolean @default(true)
+  includeAttachments Boolean @default(false)
+  notes       String   @default("")
+  responsible String
+  status      String   @default("COMPLETED")
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([unitId, type])
+}
+
+model Document {
+  id         String    @id @default(cuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contractId String?
+  contract   Contract? @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  measurementId String?
+  measurement WasteMeasurement? @relation(fields: [measurementId], references: [id], onDelete: Cascade)
+  unitId     String?
+  validUntil DateTime?
+  title      String
+  type       String
+  storageKey String
+  status     String    @default("PENDING")
+  createdAt  DateTime  @default(now())
+
+  @@index([tenantId, type])
+  @@index([contractId])
+  @@index([measurementId])
+  @@index([tenantId, validUntil])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actorId   String?
+  action    String
+  entity    String
+  entityId  String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}
+
+model Collection {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  tenant             Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unitId             String
+  unit               Unit     @relation(fields: [unitId], references: [id])
+  code               String
+  wasteType          String
+  quantityKg         Decimal
+  collectedAt        DateTime
+  transporter        String
+  finalDestination   String
+  status             String   @default("SCHEDULED")
+  receiptKey         String?
+  receiptName        String?
+  cdfKey             String?
+  cdfName            String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId, collectedAt])
+  @@index([unitId, status])
+}
+
+model Inspection {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unitId       String
+  unit         Unit     @relation(fields: [unitId], references: [id])
+  code         String
+  type         String
+  responsible  String
+  inspectedAt  DateTime
+  checklist    String   @default("")
+  notes        String   @default("")
+  result       String   @default("PENDING")
+  status       String   @default("SCHEDULED")
+  attachmentKey String?
+  attachmentName String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  nonConformities NonConformity[]
+  @@unique([tenantId, code])
+  @@index([tenantId, inspectedAt])
+}
+
+model NonConformity {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  inspectionId String
+  inspection   Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  description  String
+  severity     String
+  responsible  String
+  dueAt        DateTime?
+  actionPlan   String
+  status       String   @default("OPEN")
+  evidenceKey  String?
+  evidenceName String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  @@index([tenantId, status])
+  @@index([inspectionId])
+}
