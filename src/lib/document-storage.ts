@@ -1,45 +1,28 @@
-import { getCloudflareContext } from '@opennextjs/cloudflare';
+import { del, put } from '@vercel/blob';
 
-type SafeStorageError = {
-  errorName: string;
-  message: string;
-  code?: string;
-};
+type UploadOptions = { contentType?: string };
 
-function safeStorageError(error: unknown): SafeStorageError {
-  if (error instanceof Error) {
-    const errorWithCode = error as Error & { code?: unknown };
-    const code = typeof errorWithCode.code === 'string'
-      ? errorWithCode.code
-      : undefined;
-
-    return { errorName: error.name, message: error.message.slice(0, 500), ...(code ? { code } : {}) };
-  }
-
-  return { errorName: 'UnknownError', message: 'Non-Error value thrown by document storage.' };
+export async function uploadDocument(key: string, body: File, options: UploadOptions = {}) {
+  return put(key, body, {
+    access: 'public',
+    addRandomSuffix: true,
+    contentType: options.contentType,
+  });
 }
 
-export function getDocumentsBucket(): R2Bucket {
-  const { env } = getCloudflareContext<{ DOCUMENTS?: R2Bucket }>();
-  if (!env.DOCUMENTS) {
-    console.error(JSON.stringify({ event: 'documents.binding_missing', binding: 'DOCUMENTS' }));
-    throw new Error('R2 DOCUMENTS binding is unavailable.');
-  }
+export async function deleteDocument(url: string) {
+  await del(url);
+}
 
-  return env.DOCUMENTS;
+export async function downloadDocument(url: string) {
+  const response = await fetch(url);
+  return response.ok ? response : null;
 }
 
 export function logDocumentStorageError(operation: string, error: unknown) {
   console.error(JSON.stringify({
-    event: 'documents.storage_failed',
-    operation,
-    ...safeStorageError(error),
+    event: 'documents.storage_failed', operation,
+    errorName: error instanceof Error ? error.name : 'UnknownError',
+    message: error instanceof Error ? error.message.slice(0, 500) : 'Non-Error value thrown by document storage.',
   }));
-}
-
-export function pdfHttpMetadata(fileName: string): R2HTTPMetadata {
-  return {
-    contentType: 'application/pdf',
-    contentDisposition: `inline; filename="${fileName.replaceAll('"', '')}"`,
-  };
 }

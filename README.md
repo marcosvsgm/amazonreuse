@@ -30,6 +30,13 @@ Abra `http://localhost:3000`.
 
 Credenciais demonstrativas: `admin@amazonreuse.com.br` / `AmazonReuse2026!`.
 
+## Deploy na Vercel
+
+Conecte o repositório à Vercel, associe um banco PostgreSQL e um Blob Store, e
+configure `DATABASE_URL`, `JWT_SECRET` e `BLOB_READ_WRITE_TOKEN`. O comando de
+build é `npm run build`; para aplicar o schema no banco de produção, execute
+`npm run db:deploy` no pipeline de deploy.
+
 ## Segurança multiempresa
 
 O `tenantId` é exigido nas entidades que pertencem a clientes. Rotas de dados usam a sessão para conferir se o usuário é `SUPER_ADMIN` ou pertence ao tenant solicitado. Essa verificação deve ser mantida em toda nova rota antes de consultar ou gravar dados.

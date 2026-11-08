@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
-import { getCloudflareContext } from '@opennextjs/cloudflare';
+import { getDb } from '@/lib/db';
 import { createSession } from '@/lib/auth';
 
 const schema = z.object({ email: z.string().email(), password: z.string().min(1) });
@@ -19,11 +19,10 @@ export async function POST(request: Request) {
 
   let user: { id: string; name: string; passwordHash: string; role: string; tenantId: string | null } | null;
   try {
-    const { env } = getCloudflareContext<{ DB: D1Database }>();
-    if (!env.DB) throw new Error('D1 binding unavailable');
-    user = await env.DB.prepare('SELECT id, name, passwordHash, role, tenantId FROM User WHERE email = ? LIMIT 1')
-      .bind(parsed.data.email)
-      .first<{ id: string; name: string; passwordHash: string; role: string; tenantId: string | null }>();
+    user = await getDb().user.findUnique({
+      where: { email: parsed.data.email },
+      select: { id: true, name: true, passwordHash: true, role: true, tenantId: true },
+    });
   } catch (error) {
     console.error(JSON.stringify({
       event: 'auth.login.database_failure',

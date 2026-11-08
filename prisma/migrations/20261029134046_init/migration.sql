@@ -1,4 +1,4 @@
--- SQLite / Cloudflare D1 initial schema.
+-- Initial schema.
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE "Tenant" (

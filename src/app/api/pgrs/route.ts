@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { canAccessTenant, getSession } from '@/lib/auth';
-import { getDocumentsBucket, logDocumentStorageError, pdfHttpMetadata } from '@/lib/document-storage';
+import { deleteDocument, logDocumentStorageError, uploadDocument } from '@/lib/document-storage';
 
 // Can be made configurable at deploy time without changing the application.
 const maxUploadBytes = Number(process.env.PGRS_MAX_UPLOAD_BYTES ?? 10 * 1024 * 1024);
@@ -44,10 +44,9 @@ export async function POST(request: Request) {
   }
 
   const key = `${tenantId}/pgrs/${crypto.randomUUID()}.pdf`;
-  let bucket: R2Bucket;
+  let storageKey: string;
   try {
-    bucket = getDocumentsBucket();
-    await bucket.put(key, file.stream(), { httpMetadata: pdfHttpMetadata(file.name) });
+    storageKey = (await uploadDocument(key, file, { contentType: 'application/pdf' })).url;
   } catch (error) {
     logDocumentStorageError('upload', error);
     return NextResponse.json({ error: 'NÃ£o foi possÃ­vel armazenar o PDF. Tente novamente.' }, { status: 503 });
@@ -57,12 +56,12 @@ export async function POST(request: Request) {
   let document;
   try {
     document = await getDb().document.create({
-      data: { tenantId, unitId: unitId || null, title, type: 'PGRS', storageKey: key, status, validUntil: validUntilValue ? new Date(`${validUntilValue}T12:00:00.000Z`) : null },
+      data: { tenantId, unitId: unitId || null, title, type: 'PGRS', storageKey, status, validUntil: validUntilValue ? new Date(`${validUntilValue}T12:00:00.000Z`) : null },
     });
   } catch (error) {
     logDocumentStorageError('create_metadata', error);
     try {
-      await bucket.delete(key);
+      await deleteDocument(storageKey!);
     } catch (cleanupError) {
       logDocumentStorageError('cleanup_orphan_after_metadata_failure', cleanupError);
     }
